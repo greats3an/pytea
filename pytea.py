@@ -221,7 +221,7 @@ def cbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
 
 def qqcbc_encrypt(v:bytearray,k:bytearray,iv0=b'0',iv1=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA encryption'''
-    ciphers,v = b'',pad_simple(v)
+    ciphers,v = b'',pad(v)
     cipher0,plaintext0 = iv0,iv1
     # First block should be initalized with Initialization Vector
     for _block in block(v):
@@ -254,7 +254,7 @@ def qqcbc_decrypt(v:bytearray,k:bytearray,iv0=b'0',iv1=b'0') -> bytearray:
 
         # Plaintext
         plaintexts += plaintext 
-    return plaintexts
+    return unpad(plaintexts)
 # endregion
 
 # endregion
