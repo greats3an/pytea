@@ -44,48 +44,6 @@ class uint_32:
         self._value = self.c_uint32(value)
 # endregion
 
-# region TEA
-'''
-A rather straightforward TEA Implementation
-
-    From Wikipedia[https://en.wikipedia.org/wiki/Tiny_Encryption_Algorithm]:
-
-        TEA operates on two 32-bit unsigned integers (could be derived from a 64-bit data block) and uses a 128-bit key. 
-
-        It has a Feistel structure with a suggested 64 rounds, typically implemented in pairs termed cycles.
-'''
-def tea_block_encipher(v0,v1,k0,k1,k2,k3,n=32):
-    '''Enciphers 2 Uint32 (4 Bytes) values
-    
-        Returns 2 enciphered unit32 values
-    '''    
-    delta = 0x9E3779B9
-    # The magic constant, 2654435769 or 0x9E3779B9 is chosen to be ⌊2^32/ϕ⌋, where ϕ is the golden ratio (as a Nothing-up-my-sleeve number)
-    v0,v1,k0,k1,k2,k3,_sum = [uint_32(v) for v in [v0,v1,k0,k1,k2,k3,0]]
-    # setup,sum starts from 0
-    for i in range(0,n):
-        _sum.value = (_sum.value + delta)
-
-        v0.value += ((v1.value<<4) + k0.value) ^ (v1.value + _sum.value) ^ ((v1.value>>5) + k1.value)
-        v1.value += ((v0.value<<4) + k2.value) ^ (v0.value + _sum.value) ^ ((v0.value>>5) + k3.value)
-
-    return v0.value,v1.value
-
-def tea_block_decipher(v0,v1,k0,k1,k2,k3,n=32):
-    '''Deciphers 2 Uint32 (4 Bytes) values
-    
-        Returns 2 deciphered unit32 values
-    '''
-    delta = 0x9E3779B9
-    v0,v1,k0,k1,k2,k3,_sum = [uint_32(v) for v in [v0,v1,k0,k1,k2,k3,n * delta]]
-    # setup,sum starts from n * delta
-    for i in range(0,n):
-        v1.value -= ((v0.value<<4) + k2.value) ^ (v0.value + _sum.value) ^ ((v0.value>>5) + k3.value)
-        v0.value -= ((v1.value<<4) + k0.value) ^ (v1.value + _sum.value) ^ ((v1.value>>5) + k1.value)
-        _sum.value = (_sum.value - delta) & 0xFFFFFFFF
-
-    return v0.value,v1.value
-# endregion
 
 # region Padding
 '''
@@ -123,6 +81,64 @@ def unpad(v:bytearray) -> bytearray:
 
 # endregion
 
+# region TEA
+'''
+A rather straightforward TEA Implementation
+
+    From Wikipedia[https://en.wikipedia.org/wiki/Tiny_Encryption_Algorithm]:
+
+        TEA operates on two 32-bit unsigned integers (could be derived from a 64-bit data block) and uses a 128-bit key. 
+
+        It has a Feistel structure with a suggested 64 rounds, typically implemented in pairs termed cycles.
+'''
+def bytecipher(cipherer):
+    '''
+    Takes 2 `bytearray`s,then unpacks them into `uint_32`s to the cipherers
+    
+    Once ciphered,the `uint_32`s will be pack into 2 `bytearray`s
+    '''
+    def wrapper(v:bytearray,k:bytearray,n=32):
+        v,k = pad_simple(v,l=8),pad_simple(k,l=16)
+        v = struct.unpack('<II',v)
+        k = struct.unpack('<IIII',k)
+        result = cipherer(*v,*k,n=n)
+        result = struct.pack('<II',*result)
+        return result
+    return wrapper
+@bytecipher
+def tea_block_encipher(v0,v1,k0,k1,k2,k3,n=32):
+    '''Enciphers 2 Uint32 (4 Bytes) values
+    
+        Returns 2 enciphered unit32 values
+    '''    
+    delta = 0x9E3779B9
+    # The magic constant, 2654435769 or 0x9E3779B9 is chosen to be ⌊2^32/ϕ⌋, where ϕ is the golden ratio (as a Nothing-up-my-sleeve number)
+    v0,v1,k0,k1,k2,k3,_sum = [uint_32(v) for v in [v0,v1,k0,k1,k2,k3,0]]
+    # setup,sum starts from 0
+    for i in range(0,n):
+        _sum.value = (_sum.value + delta)
+
+        v0.value += ((v1.value<<4) + k0.value) ^ (v1.value + _sum.value) ^ ((v1.value>>5) + k1.value)
+        v1.value += ((v0.value<<4) + k2.value) ^ (v0.value + _sum.value) ^ ((v0.value>>5) + k3.value)
+
+    return v0.value,v1.value
+@bytecipher
+def tea_block_decipher(v0,v1,k0,k1,k2,k3,n=32):
+    '''Deciphers 2 Uint32 (4 Bytes) values
+    
+        Returns 2 deciphered unit32 values
+    '''
+    delta = 0x9E3779B9
+    v0,v1,k0,k1,k2,k3,_sum = [uint_32(v) for v in [v0,v1,k0,k1,k2,k3,n * delta]]
+    # setup,sum starts from n * delta
+    for i in range(0,n):
+        v1.value -= ((v0.value<<4) + k2.value) ^ (v0.value + _sum.value) ^ ((v0.value>>5) + k3.value)
+        v0.value -= ((v1.value<<4) + k0.value) ^ (v1.value + _sum.value) ^ ((v1.value>>5) + k1.value)
+        _sum.value = (_sum.value - delta) & 0xFFFFFFFF
+
+    return v0.value,v1.value
+# endregion
+
 # region Block cipher modes
 '''
 Block Cipher Modes for encryptions!
@@ -143,26 +159,23 @@ def block(v:bytearray,blocksize=8) -> bytearray:
 # region Electronic Codebook (ECB)
 def ecb_encrypt(v:bytearray,k:bytearray) -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA encryption'''
-    ciphers,k,v = b'',struct.unpack('<IIII',pad_simple(k[:16],l=16)),pad(v)
-
+    ciphers,v = b'',pad(v)
     for plaintext in block(v):
         # Plaintext
-        v0,v1 = struct.unpack('<II',plaintext)
-        v0,v1 = tea_block_encipher(v0,v1,*k)
+        cipher = tea_block_encipher(plaintext,k)
         # Block Cipher Encryption
-        ciphers += struct.pack('<II',v0,v1)
+        ciphers += cipher
         # Ciphertext
     return ciphers
 
 def ecb_decrypt(v:bytearray,k:bytearray) -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA decryption'''
-    plaintexts,k = b'',struct.unpack('<IIII',pad_simple(k[:16],l=16))
+    plaintexts = b''
     for cipher in block(v):
         # Ciphertext
-        v0,v1 = struct.unpack('<II',cipher)
-        v0,v1 = tea_block_decipher(v0,v1,*k)
+        plaintext = tea_block_decipher(cipher,k)
         # Block Cipher Decryption
-        plaintexts += struct.pack('<II',v0,v1)
+        plaintexts += plaintext
         # Plaintext
     return unpad(plaintexts)
 # endregion
@@ -176,15 +189,13 @@ def xor(v1,v2):
 
 def cbc_encrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA encryption'''
-    ciphers,k,v = b'',struct.unpack('<IIII',pad_simple(k[:16],l=16)),pad(v)
+    ciphers,v = b'',pad(v)
     cipher0 = iv
     # First block should be initalized with Initialization Vector
     for plaintext in block(v):
         plaintext = xor(plaintext,cipher0)
         # Plaintext
-        v0,v1 = struct.unpack('<II',plaintext)
-        v0,v1 = tea_block_encipher(v0,v1,*k)
-        cipher = struct.pack('<II',v0,v1)
+        cipher = tea_block_encipher(plaintext,k)
         # Block Cipher Encryption
         cipher0 = cipher
         # Ciphertext
@@ -193,13 +204,11 @@ def cbc_encrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
 
 def cbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA decryption'''
-    plaintexts,k = b'',struct.unpack('<IIII',pad_simple(k[:16],l=16))
+    plaintexts = b''
     plaintext0 = iv
     for cipher in block(v):  
         # Cipher text
-        v0,v1 = struct.unpack('<II',cipher)
-        v0,v1 = tea_block_decipher(v0,v1,*k)
-        plaintext = struct.pack('<II',v0,v1)
+        plaintext = tea_block_decipher(cipher,k)
         # Block Cipher Decryption
         plaintext = xor(plaintext,plaintext0)
         plaintext0 = cipher
@@ -212,15 +221,13 @@ def cbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
 
 def qqcbc_encrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA encryption'''
-    ciphers,k,v = b'',struct.unpack('<IIII',pad_simple(k[:16],l=16)),pad(v)
+    ciphers,v = b'',pad(v)
     cipher0 = iv
     # First block should be initalized with Initialization Vector
     for plaintext in block(v):
         plaintext = xor(plaintext,cipher0)
         # Plaintext
-        v0,v1 = struct.unpack('<II',plaintext)
-        v0,v1 = tea_block_encipher(v0,v1,*k)
-        cipher = struct.pack('<II',v0,v1)
+        cipher = tea_block_encipher(plaintext,k)
         # Block Cipher Encryption
         cipher0 = xor(cipher,xor(plaintext,cipher0))
         # Ciphertext
@@ -229,13 +236,11 @@ def qqcbc_encrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
 
 def qqcbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA decryption'''
-    plaintexts,k = b'',struct.unpack('<IIII',pad_simple(k[:16],l=16))
+    plaintexts = b''
     cipher0 = iv
     for cipher in block(v):  
         # Cipher text
-        v0,v1 = struct.unpack('<II',cipher)
-        v0,v1 = tea_block_decipher(v0,v1,*k)
-        plaintext = struct.pack('<II',v0,v1)
+        plaintext = tea_block_decipher(cipher,k)
         # Block Cipher Decryption
         plaintext = xor(plaintext,cipher0)
         cipher0 = xor(plaintext,cipher)
@@ -245,16 +250,27 @@ def qqcbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
 # endregion
 
 # endregion
+if __name__ == "__main__":
+    plaintext = b'Some arbitary text here'
+    key = b'here__is_key'
 
-plaintext = b'am i right'
-key = b'nononono'
-
-print('Plain Text     ',plaintext)
-
-enc = qqcbc_encrypt(plaintext,key)
-
-print('Cipher Text     ',enc)
-
-dec = qqcbc_decrypt(enc,key)
-
-print('Deciphered Text ',dec)
+    print('ECB Test')
+    print('Plain Text     ',plaintext)
+    enc = ecb_encrypt(plaintext,key)
+    print('Cipher Text     ',enc)
+    dec = ecb_decrypt(enc,key)
+    print('Deciphered Text ',dec)
+    print()
+    print('CBC Test')
+    print('Plain Text     ',plaintext)
+    enc = cbc_encrypt(plaintext,key)
+    print('Cipher Text     ',enc)
+    dec = cbc_decrypt(enc,key)
+    print('Deciphered Text ',dec)
+    print()
+    print('QQCBC Test')
+    print('Plain Text     ',plaintext)
+    enc = qqcbc_encrypt(plaintext,key)
+    print('Cipher Text     ',enc)
+    dec = qqcbc_decrypt(enc,key)
+    print('Deciphered Text ',dec)
