@@ -329,5 +329,4 @@ if __name__ == "__main__":
     enc = qqcbc_encrypt(plaintext,key)
     print('Cipher Text     ',enc)
     dec = qqcbc_decrypt(enc,key)
-    # CY\x0cB\xee\xdcLo\xe2\x8e\x83\x10d\xb4\x98u\x9f\x9e0\xaa?\xda\xfb\x9f
     print('Deciphered Text ',dec)
