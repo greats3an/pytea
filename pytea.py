@@ -57,7 +57,7 @@ def pad_simple(v:bytearray,l=8) -> bytearray:
     '''Simple padding without including padding length nor supports random padding chars'''
     return v + b'0' * (-len(v) % l)
 
-def pad(v:bytearray,padding=lambda : 0,l=8) -> bytearray:
+def pad(v:bytearray,padding=lambda : random.randint(0,255),l=8) -> bytearray:
     '''
         Pads a bytearray to make its length to be a multiple of `l` with the padding length included
         
@@ -259,7 +259,7 @@ def qqcbc_decrypt(v:bytearray,k:bytearray,iv0=b'0',iv1=b'0') -> bytearray:
 
 # endregion
 if __name__ == "__main__":
-    plaintext = b'ENC NOW!ENC NEXTNEXT ENC'
+    plaintext = b'Some arbitary length text here'
     key = b'0102030405060708'
 
     print('ECB Test')
