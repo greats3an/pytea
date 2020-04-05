@@ -57,7 +57,7 @@ def pad_simple(v:bytearray,l=8) -> bytearray:
     '''Simple padding without including padding length nor supports random padding chars'''
     return v + b'0' * (-len(v) % l)
 
-def pad(v:bytearray,padding=lambda : random.randint(0,255),l=8) -> bytearray:
+def pad(v:bytearray,padding=lambda : 0,l=8) -> bytearray:
     '''
         Pads a bytearray to make its length to be a multiple of `l` with the padding length included
         
@@ -160,9 +160,9 @@ def block(v:bytearray,blocksize=8) -> bytearray:
 def ecb_encrypt(v:bytearray,k:bytearray) -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA encryption'''
     ciphers,v = b'',pad(v)
-    for plaintext in block(v):
+    for _block in block(v):
         # Plaintext
-        cipher = tea_block_encipher(plaintext,k)
+        cipher = tea_block_encipher(_block,k)
         # Block Cipher Encryption
         ciphers += cipher
         # Ciphertext
@@ -171,9 +171,9 @@ def ecb_encrypt(v:bytearray,k:bytearray) -> bytearray:
 def ecb_decrypt(v:bytearray,k:bytearray) -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA decryption'''
     plaintexts = b''
-    for cipher in block(v):
+    for _block in block(v):
         # Ciphertext
-        plaintext = tea_block_decipher(cipher,k)
+        plaintext = tea_block_decipher(_block,k)
         # Block Cipher Decryption
         plaintexts += plaintext
         # Plaintext
@@ -192,8 +192,8 @@ def cbc_encrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
     ciphers,v = b'',pad(v)
     cipher0 = iv
     # First block should be initalized with Initialization Vector
-    for plaintext in block(v):
-        plaintext = xor(plaintext,cipher0)
+    for _block in block(v):
+        plaintext = xor(_block,cipher0)
         # Plaintext
         cipher = tea_block_encipher(plaintext,k)
         # Block Cipher Encryption
@@ -206,12 +206,12 @@ def cbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA decryption'''
     plaintexts = b''
     plaintext0 = iv
-    for cipher in block(v):  
+    for _block in block(v):  
         # Cipher text
-        plaintext = tea_block_decipher(cipher,k)
+        plaintext = tea_block_decipher(_block,k)
         # Block Cipher Decryption
         plaintext = xor(plaintext,plaintext0)
-        plaintext0 = cipher
+        plaintext0 = _block
         # Plaintext
         plaintexts += plaintext 
     return unpad(plaintexts)
@@ -219,40 +219,48 @@ def cbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
 
 # region QQ Cipher Block Chaining,Tencent's CBC (qqCBC)
 
-def qqcbc_encrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
+def qqcbc_encrypt(v:bytearray,k:bytearray,iv0=b'0',iv1=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA encryption'''
-    ciphers,v = b'',pad(v)
-    cipher0 = iv
+    ciphers,v = b'',pad_simple(v)
+    cipher0,plaintext0 = iv0,iv1
     # First block should be initalized with Initialization Vector
-    for plaintext in block(v):
-        plaintext = xor(plaintext,cipher0)
+    for _block in block(v):
+        plaintext = xor(_block,cipher0)
         # Plaintext
         cipher = tea_block_encipher(plaintext,k)
         # Block Cipher Encryption
-        cipher0 = xor(cipher,xor(plaintext,cipher0))
+        cipher = xor(cipher,plaintext0)
+
+        cipher0 = cipher
+        plaintext0 = plaintext
+        
         # Ciphertext
         ciphers += cipher
     return ciphers
 
-def qqcbc_decrypt(v:bytearray,k:bytearray,iv=b'0') -> bytearray:
+def qqcbc_decrypt(v:bytearray,k:bytearray,iv0=b'0',iv1=b'0') -> bytearray:
     '''Takes a byte array,for every `8` bytes of them,perform TEA decryption'''
     plaintexts = b''
-    cipher0 = iv
-    for cipher in block(v):  
+    cipher0,plaintext0 = iv0,iv1
+    for _block in block(v):  
         # Cipher text
+        cipher = xor(_block,plaintext0)
+
         plaintext = tea_block_decipher(cipher,k)
-        # Block Cipher Decryption
+        # Block Cipher Decryption          
+        plaintext0 = plaintext
         plaintext = xor(plaintext,cipher0)
-        cipher0 = xor(plaintext,cipher)
+        cipher0 = _block
+
         # Plaintext
         plaintexts += plaintext 
-    return unpad(plaintexts)
+    return plaintexts
 # endregion
 
 # endregion
 if __name__ == "__main__":
-    plaintext = b'Some arbitary text here'
-    key = b'here__is_key'
+    plaintext = b'ENC NOW!ENC NEXTNEXT ENC'
+    key = b'0102030405060708'
 
     print('ECB Test')
     print('Plain Text     ',plaintext)
@@ -273,4 +281,5 @@ if __name__ == "__main__":
     enc = qqcbc_encrypt(plaintext,key)
     print('Cipher Text     ',enc)
     dec = qqcbc_decrypt(enc,key)
+    # CY\x0cB\xee\xdcLo\xe2\x8e\x83\x10d\xb4\x98u\x9f\x9e0\xaa?\xda\xfb\x9f
     print('Deciphered Text ',dec)
